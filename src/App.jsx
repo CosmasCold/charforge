@@ -353,89 +353,82 @@ function App() {
   const deletePreset = (name) => setPresets(prev => prev.filter(p => p.name !== name))
 
   // ---------- Exports (fixed for full width) ----------
-  const exportAsPng = async () => {
-    if (!asciiRef.current) return
+ const exportAsPng = async () => {
+  if (!asciiRef.current) return
 
-    const originalStyle = {
-      maxHeight: asciiRef.current.style.maxHeight,
-      overflow: asciiRef.current.style.overflow,
-      backgroundColor: asciiRef.current.style.backgroundColor,
-      width: asciiRef.current.style.width,
-      minWidth: asciiRef.current.style.minWidth,
-    }
-
-    // Expand to full content size
-    asciiRef.current.style.maxHeight = 'none'
-    asciiRef.current.style.overflow = 'visible'
-    asciiRef.current.style.width = 'max-content'
-    asciiRef.current.style.minWidth = '100%'
-
-    if (transparentBg) {
-      asciiRef.current.style.backgroundColor = 'transparent'
-    }
-
-    try {
-      const dataUrl = await toPng(asciiRef.current, {
-        backgroundColor: transparentBg ? undefined : bgColor,
-        pixelRatio: pngScale,
-        cacheBust: true,
-      })
-      const link = document.createElement('a')
-      link.download = `ascii-${dims.width}x${dims.height}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      alert('Export failed: ' + error.message)
-    } finally {
-      asciiRef.current.style.maxHeight = originalStyle.maxHeight || '600px'
-      asciiRef.current.style.overflow = originalStyle.overflow || 'auto'
-      asciiRef.current.style.backgroundColor = originalStyle.backgroundColor
-      asciiRef.current.style.width = originalStyle.width || ''
-      asciiRef.current.style.minWidth = originalStyle.minWidth || ''
-    }
+  const originalElement = asciiRef.current
+  const clone = originalElement.cloneNode(true)
+  
+  // Apply styles to the clone to ensure full width capture
+  clone.style.position = 'absolute'
+  clone.style.top = '-9999px'
+  clone.style.left = '-9999px'
+  clone.style.width = 'max-content'
+  clone.style.maxHeight = 'none'
+  clone.style.overflow = 'visible'
+  clone.style.backgroundColor = transparentBg ? 'transparent' : bgColor
+  clone.style.color = textColor  // keep text color as is
+  
+  // Append to body temporarily
+  document.body.appendChild(clone)
+  
+  try {
+    const dataUrl = await toPng(clone, {
+      backgroundColor: transparentBg ? undefined : bgColor,
+      pixelRatio: pngScale,
+      cacheBust: true,
+    })
+    const link = document.createElement('a')
+    link.download = `ascii-${dims.width}x${dims.height}.png`
+    link.href = dataUrl
+    link.click()
+  } catch (error) {
+    alert('Export failed: ' + error.message)
+  } finally {
+    document.body.removeChild(clone)
   }
+}
 
-  const exportAsPdf = async () => {
-    if (!asciiRef.current) return
+const exportAsPdf = async () => {
+  if (!asciiRef.current) return
 
-    const originalStyle = {
-      maxHeight: asciiRef.current.style.maxHeight,
-      overflow: asciiRef.current.style.overflow,
-      width: asciiRef.current.style.width,
-      minWidth: asciiRef.current.style.minWidth,
-    }
-
-    asciiRef.current.style.maxHeight = 'none'
-    asciiRef.current.style.overflow = 'visible'
-    asciiRef.current.style.width = 'max-content'
-    asciiRef.current.style.minWidth = '100%'
-
-    try {
-      const dataUrl = await toPng(asciiRef.current, {
-        backgroundColor: bgColor,
-        pixelRatio: pngScale,
-        cacheBust: true,
+  const originalElement = asciiRef.current
+  const clone = originalElement.cloneNode(true)
+  
+  clone.style.position = 'absolute'
+  clone.style.top = '-9999px'
+  clone.style.left = '-9999px'
+  clone.style.width = 'max-content'
+  clone.style.maxHeight = 'none'
+  clone.style.overflow = 'visible'
+  clone.style.backgroundColor = bgColor
+  clone.style.color = textColor
+  
+  document.body.appendChild(clone)
+  
+  try {
+    const dataUrl = await toPng(clone, {
+      backgroundColor: bgColor,
+      pixelRatio: pngScale,
+      cacheBust: true,
+    })
+    const img = new Image()
+    img.src = dataUrl
+    img.onload = () => {
+      const pdf = new jsPDF({
+        orientation: img.width > img.height ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [img.width, img.height]
       })
-      const img = new Image()
-      img.src = dataUrl
-      img.onload = () => {
-        const pdf = new jsPDF({
-          orientation: img.width > img.height ? 'landscape' : 'portrait',
-          unit: 'px',
-          format: [img.width, img.height]
-        })
-        pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
-        pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
-      }
-    } catch (error) {
-      alert('Export failed: ' + error.message)
-    } finally {
-      asciiRef.current.style.maxHeight = originalStyle.maxHeight || '600px'
-      asciiRef.current.style.overflow = originalStyle.overflow || 'auto'
-      asciiRef.current.style.width = originalStyle.width || ''
-      asciiRef.current.style.minWidth = originalStyle.minWidth || ''
+      pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
+      pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
     }
+  } catch (error) {
+    alert('Export failed: ' + error.message)
+  } finally {
+    document.body.removeChild(clone)
   }
+}
 
   const exportAsJSON = () => {
     const lines = currentAscii.split('\n').filter(l => l.length > 0)
