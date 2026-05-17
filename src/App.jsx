@@ -352,75 +352,101 @@ function App() {
 
   // ---------- Exports (clone‑based for full capture) ----------
   const exportAsPng = async () => {
-    if (!asciiRef.current) return
-    const original = asciiRef.current
-    const clone = original.cloneNode(true)
-    
-    clone.style.position = 'absolute'
-    clone.style.top = '-9999px'
-    clone.style.left = '-9999px'
-    clone.style.width = 'max-content'
-    clone.style.maxHeight = 'none'
-    clone.style.overflow = 'visible'
-    clone.style.backgroundColor = transparentBg ? 'transparent' : bgColor
-    
-    document.body.appendChild(clone)
-    
-    try {
-      const dataUrl = await toPng(clone, {
-        backgroundColor: transparentBg ? undefined : bgColor,
-        pixelRatio: pngScale,
-        cacheBust: true,
-      })
-      const link = document.createElement('a')
-      link.download = `ascii-${dims.width}x${dims.height}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      alert('Export failed: ' + error.message)
-    } finally {
-      document.body.removeChild(clone)
-    }
+  if (!currentAscii) return alert('No ASCII art to export')
+  
+  // Create a temporary div to hold the ASCII art
+  const tempDiv = document.createElement('div')
+  tempDiv.style.position = 'absolute'
+  tempDiv.style.top = '-9999px'
+  tempDiv.style.left = '-9999px'
+  tempDiv.style.backgroundColor = transparentBg ? 'transparent' : bgColor
+  tempDiv.style.color = textColor
+  tempDiv.style.fontFamily = "'JetBrains Mono', 'Courier New', monospace"
+  tempDiv.style.fontSize = `${14 * pngScale}px`
+  tempDiv.style.lineHeight = '1.2'
+  tempDiv.style.whiteSpace = 'pre'
+  tempDiv.style.padding = '20px'
+  tempDiv.style.borderRadius = '12px'
+  
+  const pre = document.createElement('pre')
+  pre.textContent = currentAscii
+  pre.style.margin = '0'
+  pre.style.fontFamily = 'inherit'
+  pre.style.fontSize = 'inherit'
+  pre.style.lineHeight = 'inherit'
+  pre.style.whiteSpace = 'pre'
+  pre.style.color = textColor
+  
+  tempDiv.appendChild(pre)
+  document.body.appendChild(tempDiv)
+  
+  try {
+    const dataUrl = await toPng(tempDiv, {
+      backgroundColor: transparentBg ? undefined : bgColor,
+      pixelRatio: pngScale,
+      cacheBust: true,
+    })
+    const link = document.createElement('a')
+    link.download = `ascii-${dims.width}x${dims.height}.png`
+    link.href = dataUrl
+    link.click()
+  } catch (error) {
+    alert('Export failed: ' + error.message)
+  } finally {
+    document.body.removeChild(tempDiv)
   }
+}
 
-  const exportAsPdf = async () => {
-    if (!asciiRef.current) return
-    const original = asciiRef.current
-    const clone = original.cloneNode(true)
-    
-    clone.style.position = 'absolute'
-    clone.style.top = '-9999px'
-    clone.style.left = '-9999px'
-    clone.style.width = 'max-content'
-    clone.style.maxHeight = 'none'
-    clone.style.overflow = 'visible'
-    clone.style.backgroundColor = bgColor
-    
-    document.body.appendChild(clone)
-    
-    try {
-      const dataUrl = await toPng(clone, {
-        backgroundColor: bgColor,
-        pixelRatio: pngScale,
-        cacheBust: true,
+const exportAsPdf = async () => {
+  if (!currentAscii) return alert('No ASCII art to export')
+  
+  const tempDiv = document.createElement('div')
+  tempDiv.style.position = 'absolute'
+  tempDiv.style.top = '-9999px'
+  tempDiv.style.left = '-9999px'
+  tempDiv.style.backgroundColor = bgColor
+  tempDiv.style.color = textColor
+  tempDiv.style.fontFamily = "'JetBrains Mono', 'Courier New', monospace"
+  tempDiv.style.fontSize = `${14 * pngScale}px`
+  tempDiv.style.lineHeight = '1.2'
+  tempDiv.style.whiteSpace = 'pre'
+  tempDiv.style.padding = '20px'
+  
+  const pre = document.createElement('pre')
+  pre.textContent = currentAscii
+  pre.style.margin = '0'
+  pre.style.fontFamily = 'inherit'
+  pre.style.fontSize = 'inherit'
+  pre.style.lineHeight = 'inherit'
+  pre.style.whiteSpace = 'pre'
+  pre.style.color = textColor
+  
+  tempDiv.appendChild(pre)
+  document.body.appendChild(tempDiv)
+  
+  try {
+    const dataUrl = await toPng(tempDiv, {
+      backgroundColor: bgColor,
+      pixelRatio: pngScale,
+      cacheBust: true,
+    })
+    const img = new Image()
+    img.src = dataUrl
+    img.onload = () => {
+      const pdf = new jsPDF({
+        orientation: img.width > img.height ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [img.width, img.height]
       })
-      const img = new Image()
-      img.src = dataUrl
-      img.onload = () => {
-        const pdf = new jsPDF({
-          orientation: img.width > img.height ? 'landscape' : 'portrait',
-          unit: 'px',
-          format: [img.width, img.height]
-        })
-        pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
-        pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
-      }
-    } catch (error) {
-      alert('Export failed: ' + error.message)
-    } finally {
-      document.body.removeChild(clone)
+      pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
+      pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
     }
+  } catch (error) {
+    alert('Export failed: ' + error.message)
+  } finally {
+    document.body.removeChild(tempDiv)
   }
+}
 
   const exportAsJSON = () => {
     const lines = currentAscii.split('\n').filter(l => l.length > 0)
