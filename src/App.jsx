@@ -79,7 +79,6 @@ function App() {
     if (!error) setCloudArts(data)
   }, [user])
 
-  // Load cloud data when user logs in
   useEffect(() => {
     if (user) {
       loadCloudPresets()
@@ -226,7 +225,6 @@ function App() {
   }, [])
 
   const activeCharSet = useCustomChars ? customChars : charSet
-  // React Compiler warnings can be ignored; the function works correctly.
   const currentAscii = useMemo(() => {
     if (!activeImageId) return ''
     const img = images.find(i => i.id === activeImageId)
@@ -352,83 +350,77 @@ function App() {
   }
   const deletePreset = (name) => setPresets(prev => prev.filter(p => p.name !== name))
 
-  // ---------- Exports (fixed for full width) ----------
- const exportAsPng = async () => {
-  if (!asciiRef.current) return
-
-  const originalElement = asciiRef.current
-  const clone = originalElement.cloneNode(true)
-  
-  // Apply styles to the clone to ensure full width capture
-  clone.style.position = 'absolute'
-  clone.style.top = '-9999px'
-  clone.style.left = '-9999px'
-  clone.style.width = 'max-content'
-  clone.style.maxHeight = 'none'
-  clone.style.overflow = 'visible'
-  clone.style.backgroundColor = transparentBg ? 'transparent' : bgColor
-  clone.style.color = textColor  // keep text color as is
-  
-  // Append to body temporarily
-  document.body.appendChild(clone)
-  
-  try {
-    const dataUrl = await toPng(clone, {
-      backgroundColor: transparentBg ? undefined : bgColor,
-      pixelRatio: pngScale,
-      cacheBust: true,
-    })
-    const link = document.createElement('a')
-    link.download = `ascii-${dims.width}x${dims.height}.png`
-    link.href = dataUrl
-    link.click()
-  } catch (error) {
-    alert('Export failed: ' + error.message)
-  } finally {
-    document.body.removeChild(clone)
-  }
-}
-
-const exportAsPdf = async () => {
-  if (!asciiRef.current) return
-
-  const originalElement = asciiRef.current
-  const clone = originalElement.cloneNode(true)
-  
-  clone.style.position = 'absolute'
-  clone.style.top = '-9999px'
-  clone.style.left = '-9999px'
-  clone.style.width = 'max-content'
-  clone.style.maxHeight = 'none'
-  clone.style.overflow = 'visible'
-  clone.style.backgroundColor = bgColor
-  clone.style.color = textColor
-  
-  document.body.appendChild(clone)
-  
-  try {
-    const dataUrl = await toPng(clone, {
-      backgroundColor: bgColor,
-      pixelRatio: pngScale,
-      cacheBust: true,
-    })
-    const img = new Image()
-    img.src = dataUrl
-    img.onload = () => {
-      const pdf = new jsPDF({
-        orientation: img.width > img.height ? 'landscape' : 'portrait',
-        unit: 'px',
-        format: [img.width, img.height]
+  // ---------- Exports (clone‑based for full capture) ----------
+  const exportAsPng = async () => {
+    if (!asciiRef.current) return
+    const original = asciiRef.current
+    const clone = original.cloneNode(true)
+    
+    clone.style.position = 'absolute'
+    clone.style.top = '-9999px'
+    clone.style.left = '-9999px'
+    clone.style.width = 'max-content'
+    clone.style.maxHeight = 'none'
+    clone.style.overflow = 'visible'
+    clone.style.backgroundColor = transparentBg ? 'transparent' : bgColor
+    
+    document.body.appendChild(clone)
+    
+    try {
+      const dataUrl = await toPng(clone, {
+        backgroundColor: transparentBg ? undefined : bgColor,
+        pixelRatio: pngScale,
+        cacheBust: true,
       })
-      pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
-      pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
+      const link = document.createElement('a')
+      link.download = `ascii-${dims.width}x${dims.height}.png`
+      link.href = dataUrl
+      link.click()
+    } catch (error) {
+      alert('Export failed: ' + error.message)
+    } finally {
+      document.body.removeChild(clone)
     }
-  } catch (error) {
-    alert('Export failed: ' + error.message)
-  } finally {
-    document.body.removeChild(clone)
   }
-}
+
+  const exportAsPdf = async () => {
+    if (!asciiRef.current) return
+    const original = asciiRef.current
+    const clone = original.cloneNode(true)
+    
+    clone.style.position = 'absolute'
+    clone.style.top = '-9999px'
+    clone.style.left = '-9999px'
+    clone.style.width = 'max-content'
+    clone.style.maxHeight = 'none'
+    clone.style.overflow = 'visible'
+    clone.style.backgroundColor = bgColor
+    
+    document.body.appendChild(clone)
+    
+    try {
+      const dataUrl = await toPng(clone, {
+        backgroundColor: bgColor,
+        pixelRatio: pngScale,
+        cacheBust: true,
+      })
+      const img = new Image()
+      img.src = dataUrl
+      img.onload = () => {
+        const pdf = new jsPDF({
+          orientation: img.width > img.height ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [img.width, img.height]
+        })
+        pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
+        pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
+      }
+    } catch (error) {
+      alert('Export failed: ' + error.message)
+    } finally {
+      document.body.removeChild(clone)
+    }
+  }
 
   const exportAsJSON = () => {
     const lines = currentAscii.split('\n').filter(l => l.length > 0)
@@ -575,7 +567,7 @@ const exportAsPdf = async () => {
   const contactEmail = "cloudandclipboard@gmail.com"
   const buyMeACoffeeUrl = "https://buymeacoffee.com/cloudandclipboard"
 
-  // ---------- Render (unchanged, but ensure output container has correct overflow) ----------
+  // ---------- Render ----------
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F9F6F0', color: '#2E2A28' }}>
       {/* Header with logo */}
