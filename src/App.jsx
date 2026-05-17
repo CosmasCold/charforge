@@ -27,6 +27,7 @@ function App() {
   const [textColor, setTextColor] = useState('#2E2A28')
   const [bgColor, setBgColor] = useState('#FAF6EF')
   const [pngScale, setPngScale] = useState(2)
+  const [transparentBg, setTransparentBg] = useState(false)
   const asciiRef = useRef(null)
 
   // Auth
@@ -40,6 +41,11 @@ function App() {
   const [cloudPresets, setCloudPresets] = useState([])
   const [cloudArts, setCloudArts] = useState([])
   const [fontMetrics, setFontMetrics] = useState(null)
+
+  // Modal state for gallery
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalContent, setModalContent] = useState('')
+  const [modalTitle, setModalTitle] = useState('')
 
   // Local presets
   const [presets, setPresets] = useState(() => {
@@ -76,13 +82,10 @@ function App() {
   // Load cloud data when user logs in
   useEffect(() => {
     if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadCloudPresets()
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadGallery()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [user, loadCloudPresets, loadGallery])
 
   const savePresetToCloud = async (name, settings) => {
     if (!user) return alert('Please sign in')
@@ -96,16 +99,17 @@ function App() {
     loadCloudPresets()
   }
   const saveCurrentArt = async (title) => {
-  if (!user) return alert('Sign in first')
-  const { error } = await supabase.from('ascii_arts').insert({
-    title,
-    content: currentAscii,
-    settings: { width, verticalScale, charSet: activeCharSet, ditherMethod, invert, brightness, contrast },
-    user_id: user.id   // <-- MUST HAVE THIS
-  })
-  if (error) alert(error.message)
-  else loadGallery()
-}
+    if (!user) return alert('Sign in first')
+    if (!currentAscii) return alert('No ASCII art to save')
+    const { error } = await supabase.from('ascii_arts').insert({
+      title,
+      content: currentAscii,
+      settings: { width, verticalScale, charSet: activeCharSet, ditherMethod, invert, brightness, contrast, textColor, bgColor, pngScale, transparentBg },
+      user_id: user.id
+    })
+    if (error) alert(error.message)
+    else loadGallery()
+  }
 
   const handleAuth = async () => {
     setLoading(true)
@@ -222,7 +226,7 @@ function App() {
   }, [])
 
   const activeCharSet = useCustomChars ? customChars : charSet
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // React Compiler warnings can be ignored; the function works correctly.
   const currentAscii = useMemo(() => {
     if (!activeImageId) return ''
     const img = images.find(i => i.id === activeImageId)
@@ -263,7 +267,7 @@ function App() {
         setFontMetrics({ ratio, name: file.name })
         setVerticalScale(ratio * 0.9)
         alert(`Font loaded. Aspect ratio: ${ratio.toFixed(2)}. Vertical scale set to ${(ratio*0.9).toFixed(2)}. Adjust if needed.`)
-      }).catch(error => alert('Invalid font file'))
+      }).catch(() => alert('Invalid font file'))
     }
     reader.readAsArrayBuffer(file)
   }
@@ -322,7 +326,7 @@ function App() {
   // ---------- Presets ----------
   const savePreset = () => {
     if (!presetName.trim()) return alert('Enter a name')
-    const settings = { width, verticalScale, charSet, customChars, useCustomChars, ditherMethod, invert, brightness, contrast, textColor, bgColor, pngScale }
+    const settings = { width, verticalScale, charSet, customChars, useCustomChars, ditherMethod, invert, brightness, contrast, textColor, bgColor, pngScale, transparentBg }
     setPresets(prev => {
       const existing = prev.find(p => p.name === presetName)
       if (existing) return prev.map(p => p.name === presetName ? { ...p, settings } : p)
@@ -344,46 +348,92 @@ function App() {
     if (settings.textColor) setTextColor(settings.textColor)
     if (settings.bgColor) setBgColor(settings.bgColor)
     if (settings.pngScale) setPngScale(settings.pngScale)
+    if (settings.transparentBg !== undefined) setTransparentBg(settings.transparentBg)
   }
   const deletePreset = (name) => setPresets(prev => prev.filter(p => p.name !== name))
 
-  // ---------- Exports ----------
+  // ---------- Exports (fixed for full width) ----------
   const exportAsPng = async () => {
     if (!asciiRef.current) return
-    const originalStyle = { maxHeight: asciiRef.current.style.maxHeight, overflow: asciiRef.current.style.overflow }
+
+    const originalStyle = {
+      maxHeight: asciiRef.current.style.maxHeight,
+      overflow: asciiRef.current.style.overflow,
+      backgroundColor: asciiRef.current.style.backgroundColor,
+      width: asciiRef.current.style.width,
+      minWidth: asciiRef.current.style.minWidth,
+    }
+
+    // Expand to full content size
     asciiRef.current.style.maxHeight = 'none'
     asciiRef.current.style.overflow = 'visible'
+    asciiRef.current.style.width = 'max-content'
+    asciiRef.current.style.minWidth = '100%'
+
+    if (transparentBg) {
+      asciiRef.current.style.backgroundColor = 'transparent'
+    }
+
     try {
-      const dataUrl = await toPng(asciiRef.current, { backgroundColor: bgColor, pixelRatio: pngScale })
+      const dataUrl = await toPng(asciiRef.current, {
+        backgroundColor: transparentBg ? undefined : bgColor,
+        pixelRatio: pngScale,
+        cacheBust: true,
+      })
       const link = document.createElement('a')
       link.download = `ascii-${dims.width}x${dims.height}.png`
       link.href = dataUrl
       link.click()
-    } catch (error) { alert('Export failed: ' + error.message) }
-    finally {
+    } catch (error) {
+      alert('Export failed: ' + error.message)
+    } finally {
       asciiRef.current.style.maxHeight = originalStyle.maxHeight || '600px'
       asciiRef.current.style.overflow = originalStyle.overflow || 'auto'
+      asciiRef.current.style.backgroundColor = originalStyle.backgroundColor
+      asciiRef.current.style.width = originalStyle.width || ''
+      asciiRef.current.style.minWidth = originalStyle.minWidth || ''
     }
   }
 
   const exportAsPdf = async () => {
     if (!asciiRef.current) return
-    const originalStyle = { maxHeight: asciiRef.current.style.maxHeight, overflow: asciiRef.current.style.overflow }
+
+    const originalStyle = {
+      maxHeight: asciiRef.current.style.maxHeight,
+      overflow: asciiRef.current.style.overflow,
+      width: asciiRef.current.style.width,
+      minWidth: asciiRef.current.style.minWidth,
+    }
+
     asciiRef.current.style.maxHeight = 'none'
     asciiRef.current.style.overflow = 'visible'
+    asciiRef.current.style.width = 'max-content'
+    asciiRef.current.style.minWidth = '100%'
+
     try {
-      const dataUrl = await toPng(asciiRef.current, { backgroundColor: bgColor, pixelRatio: pngScale })
+      const dataUrl = await toPng(asciiRef.current, {
+        backgroundColor: bgColor,
+        pixelRatio: pngScale,
+        cacheBust: true,
+      })
       const img = new Image()
       img.src = dataUrl
       img.onload = () => {
-        const pdf = new jsPDF({ orientation: img.width > img.height ? 'landscape' : 'portrait', unit: 'px', format: [img.width, img.height] })
+        const pdf = new jsPDF({
+          orientation: img.width > img.height ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [img.width, img.height]
+        })
         pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height)
         pdf.save(`ascii-${dims.width}x${dims.height}.pdf`)
       }
-    } catch (error) { alert('Export failed: ' + error.message) }
-    finally {
+    } catch (error) {
+      alert('Export failed: ' + error.message)
+    } finally {
       asciiRef.current.style.maxHeight = originalStyle.maxHeight || '600px'
       asciiRef.current.style.overflow = originalStyle.overflow || 'auto'
+      asciiRef.current.style.width = originalStyle.width || ''
+      asciiRef.current.style.minWidth = originalStyle.minWidth || ''
     }
   }
 
@@ -505,6 +555,7 @@ function App() {
     setTextColor('#2E2A28')
     setBgColor('#FAF6EF')
     setPngScale(2)
+    setTransparentBg(false)
   }
 
   const charSetOptions = {
@@ -517,22 +568,26 @@ function App() {
     artistic: '█✶☯❖◆◇◈◎○●◘◙◦▪▫',
     minimal: ' .!|/\\-~+=*%#@'
   }
+
   const handleCharSetSelect = (e) => {
     const selected = e.target.value
-    if (selected === 'custom') setUseCustomChars(true)
-    else { setUseCustomChars(false); setCharSet(charSetOptions[selected] || charSetOptions.standard) }
+    if (selected === 'custom') {
+      setUseCustomChars(true)
+    } else {
+      setUseCustomChars(false)
+      setCharSet(charSetOptions[selected] || charSetOptions.standard)
+    }
   }
 
   const contactEmail = "cloudandclipboard@gmail.com"
   const buyMeACoffeeUrl = "https://buymeacoffee.com/cloudandclipboard"
 
-  // ---------- Render with logo ----------
+  // ---------- Render (unchanged, but ensure output container has correct overflow) ----------
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F9F6F0', color: '#2E2A28' }}>
-      {/* Header with glassmorphism and logo */}
+      {/* Header with logo */}
       <div className="sticky top-0 z-10 backdrop-blur-md bg-white/40 border-b border-white/30 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          {/* Logo: replace "my-logo.png" with your actual file name */}
           <img src="/my-logo.png" alt="CharForge Logo" className="h-12 w-auto" />
           <div>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight" style={{ color: '#3B4A3F' }}>CharForge</h1>
@@ -545,7 +600,7 @@ function App() {
         {/* Auth card */}
         <div className="rounded-xl border border-[#E5D9CC] bg-white/90 backdrop-blur-sm p-4 flex flex-wrap justify-between items-center">
           {user ? (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <span>Welcome, {user.email}</span>
               <button onClick={signOut} className="text-sm bg-[#D96C4A] text-white px-3 py-1 rounded">Sign out</button>
               <button onClick={() => saveCurrentArt(prompt('Title for this ASCII art?'))} className="text-sm bg-[#3B4A3F] text-white px-3 py-1 rounded">💾 Save current to gallery</button>
@@ -643,19 +698,50 @@ function App() {
                 <div className="flex justify-between items-center"><h2 className="font-semibold">Forge Controls</h2><button onClick={resetSettings} className="text-xs px-2 py-1 rounded-md border">Reset</button></div>
                 <div><label>Width: {width}</label><input type="range" min="20" max="200" value={width} onChange={(e) => setWidth(parseInt(e.target.value))} className="w-full accent-[#D96C4A]" /></div>
                 <div><div className="flex justify-between"><label>Vertical scale: {verticalScale.toFixed(2)}</label><button onClick={() => setVerticalScale(0.45)} className="text-xs bg-gray-200 px-1">Reset</button></div><input type="range" min="0.30" max="0.70" step="0.01" value={verticalScale} onChange={(e) => setVerticalScale(parseFloat(e.target.value))} className="w-full accent-[#D96C4A]" /></div>
-                <div><label>Character set</label><select onChange={handleCharSetSelect} className="w-full p-2 rounded-lg border"><option>Standard</option><option>Blocks</option><option>Simple</option><option>Braille</option><option>Shades</option><option>Detailed</option><option>Artistic</option><option>Minimal</option><option value="custom">Custom</option></select></div>
+
+                <div>
+                  <label>Character set</label>
+                  <select
+                    value={useCustomChars ? 'custom' : Object.keys(charSetOptions).find(key => charSetOptions[key] === charSet) || 'standard'}
+                    onChange={handleCharSetSelect}
+                    className="w-full p-2 rounded-lg border"
+                  >
+                    <option value="standard">Standard (@%#*+=-:. )</option>
+                    <option value="blocks">Blocks (█▓▒░ )</option>
+                    <option value="simple">Simple ( .:;+=x%#@)</option>
+                    <option value="braille">Braille (⣿⣶⣧⣷...)</option>
+                    <option value="shades">Shades (▓▒░█ )</option>
+                    <option value="detailed">Detailed (@#$%&WX890B...)</option>
+                    <option value="artistic">Artistic (█✶☯❖◆◇...)</option>
+                    <option value="minimal">Minimal ( .!|/\\-~+=*%#@)</option>
+                    <option value="custom">✏️ Custom (type below)</option>
+                  </select>
+                </div>
+
                 {useCustomChars && <input type="text" value={customChars} onChange={(e) => setCustomChars(e.target.value)} className="w-full p-2 border rounded" />}
                 <div><label>Dithering</label><select value={ditherMethod} onChange={(e) => setDitherMethod(e.target.value)} className="w-full p-2 rounded-lg border"><option>none</option><option>floyd</option><option>atkinson</option></select></div>
                 <div><label>Brightness: {brightness}</label><input type="range" min="-100" max="100" value={brightness} onChange={(e) => setBrightness(parseInt(e.target.value))} className="w-full accent-[#D96C4A]" /></div>
                 <div><label>Contrast: {contrast}%</label><input type="range" min="0" max="200" value={contrast} onChange={(e) => setContrast(parseInt(e.target.value))} className="w-full accent-[#D96C4A]" /></div>
                 <div className="grid grid-cols-2 gap-2"><div><label>Text color</label><input type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} className="w-full h-9" /></div><div><label>Background</label><input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="w-full h-9" /></div></div>
                 <div><label>PNG scale: {pngScale}x</label><input type="range" min="1" max="4" step="1" value={pngScale} onChange={(e) => setPngScale(parseInt(e.target.value))} className="w-full accent-[#D96C4A]" /></div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="transparentBg"
+                    checked={transparentBg}
+                    onChange={(e) => setTransparentBg(e.target.checked)}
+                    className="accent-[#D96C4A] w-4 h-4"
+                  />
+                  <label htmlFor="transparentBg" className="text-sm">Transparent PNG background (overrides background color)</label>
+                </div>
+
                 <div className="flex items-center gap-2"><input type="checkbox" id="invert" checked={invert} onChange={(e) => setInvert(e.target.checked)} className="accent-[#D96C4A]" /><label htmlFor="invert">Invert</label></div>
               </div>
             )}
           </div>
 
-          {/* RIGHT COLUMN – Output */}
+          {/* RIGHT COLUMN – Output and Gallery */}
           <div className="flex-1 min-w-0">
             {currentAscii ? (
               <div className="sticky top-28">
@@ -673,14 +759,46 @@ function App() {
                   </div>
                 </div>
                 <div ref={asciiRef} className="rounded-xl border shadow-inner p-5 overflow-auto max-h-[calc(100vh-250px)]" style={{ backgroundColor: bgColor, color: textColor, borderColor: '#E5D9CC' }}>
-                  <pre className="font-mono text-sm leading-tight whitespace-pre-wrap">{currentAscii}</pre>
+                  <pre className="font-mono text-sm leading-tight whitespace-pre">{currentAscii}</pre>
                 </div>
+
+                {/* Gallery Section */}
                 {user && cloudArts.length > 0 && (
-                  <div className="mt-4">
-                    <h3 className="font-semibold">Your Gallery</h3>
-                    <div className="flex flex-wrap gap-2 mt-1">
+                  <div className="mt-6 border-t border-[#E5D9CC] pt-4">
+                    <h3 className="font-semibold mb-2 flex items-center gap-2">🖼️ Your Gallery ({cloudArts.length})</h3>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                       {cloudArts.map(art => (
-                        <button key={art.id} onClick={() => alert(art.content)} className="text-xs bg-gray-100 px-2 py-1 rounded">{art.title || 'Untitled'}</button>
+                        <div key={art.id} className="bg-white/80 rounded p-2 text-sm border border-[#E5D9CC] flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{art.title || 'Untitled'}</div>
+                            <div className="text-xs text-gray-500">{new Date(art.created_at).toLocaleString()}</div>
+                            <pre className="text-xs mt-1 font-mono bg-gray-50 p-1 rounded truncate max-h-12 overflow-hidden">{art.content.substring(0, 80)}...</pre>
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => {
+                                setModalTitle(art.title || 'ASCII Art');
+                                setModalContent(art.content);
+                                setModalOpen(true);
+                              }}
+                              className="text-xs bg-[#D96C4A] text-white px-2 py-1 rounded hover:opacity-80"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (confirm('Delete this saved art?')) {
+                                  const { error } = await supabase.from('ascii_arts').delete().eq('id', art.id);
+                                  if (error) alert(error.message);
+                                  else loadGallery();
+                                }
+                              }}
+                              className="text-xs bg-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-red-400 hover:text-white"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -704,6 +822,33 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {/* Modal for viewing full ASCII art */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={() => setModalOpen(false)}>
+          <div className="bg-white rounded-xl max-w-3xl w-full max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="font-semibold text-lg">{modalTitle}</h3>
+              <button onClick={() => setModalOpen(false)} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+            <div className="p-4 overflow-auto flex-1">
+              <pre className="font-mono text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded border">{modalContent}</pre>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(modalContent);
+                  alert('Copied to clipboard!');
+                }}
+                className="bg-[#D96C4A] text-white px-3 py-1 rounded text-sm"
+              >
+                Copy to clipboard
+              </button>
+              <button onClick={() => setModalOpen(false)} className="border px-3 py-1 rounded text-sm">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
